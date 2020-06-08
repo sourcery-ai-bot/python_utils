@@ -432,13 +432,10 @@ class SQLQuery(object):
             self.items = []
         elif isinstance(items, list):
             self.items = items
-        elif isinstance(items, SQLParam):
+        elif isinstance(items, SQLParam) or not isinstance(items, SQLQuery):
             self.items = [items]
-        elif isinstance(items, SQLQuery):
-            self.items = list(items.items)
         else:
-            self.items = [items]
-
+            self.items = list(items.items)
         # Take care of SQLLiterals
         for i, item in enumerate(self.items):
             if isinstance(item, SQLParam) and isinstance(item.value, SQLLiteral):
@@ -495,9 +492,12 @@ class SQLQuery(object):
                 # automatically escape % characters in the query
                 # For backward compatability, ignore escaping when the query
                 # looks already escaped
-                if paramstyle in ['format', 'pyformat']:
-                    if '%' in x and '%%' not in x:
-                        x = x.replace('%', '%%')
+                if (
+                    paramstyle in ['format', 'pyformat']
+                    and '%' in x
+                    and '%%' not in x
+                ):
+                    x = x.replace('%', '%%')
                 s.append(x)
         return "".join(s)
 
@@ -548,7 +548,7 @@ class SQLQuery(object):
 
     def _str(self):
         try:
-            return self.query() % tuple([sqlify(x) for x in self.values()])
+            return self.query() % tuple(sqlify(x) for x in self.values())
         except (ValueError, TypeError):
             return self.query()
 
@@ -586,8 +586,7 @@ def _sqllist(values):
         >>> _sqllist([1, 2, 3])
         <sql: '(1, 2, 3)'>
     """
-    items = []
-    items.append('(')
+    items = ['(']
     for i, v in enumerate(values):
         if i != 0:
             items.append(', ')
@@ -687,14 +686,16 @@ def sqlors(left, lst):
         ln = len(lst)
         if ln == 0:
             return SQLQuery("1=2")
-        if ln == 1:
+        elif ln == 1:
             lst = lst[0]
 
     if isinstance(lst, iters):
-        return SQLQuery(['('] +
-                        sum([[left, sqlparam(x), ' OR '] for x in lst], []) +
-                        ['1=2)']
-                        )
+        return SQLQuery(
+            ['(']
+            + sum(([left, sqlparam(x), ' OR '] for x in lst), [])
+            + ['1=2)']
+        )
+
     else:
         return left + sqlparam(lst)
 
@@ -1033,15 +1034,8 @@ class DB:
             >>> db.where('foo', _test=True)
             <sql: 'SELECT * FROM foo'>
         """
-        where_clauses = []
-        for k, v in kwargs.iteritems():
-            where_clauses.append(k + ' = ' + sqlquote(v))
-
-        if where_clauses:
-            where = SQLQuery.join(where_clauses, " AND ")
-        else:
-            where = None
-
+        where_clauses = [k + ' = ' + sqlquote(v) for k, v in kwargs.iteritems()]
+        where = SQLQuery.join(where_clauses, " AND ") if where_clauses else None
         return self.select(table, what=what, order=order,
                            group=group, limit=limit, offset=offset, _test=_test,
                            where=where)
@@ -1380,7 +1374,7 @@ def database(dburl=None, **params):
     Pooling will be enabled if DBUtils module is available.
     Pooling can be disabled by passing pooling=False in params.
     """
-    if not dburl and not params:
+    if not (dburl or params):
         dburl = os.environ['DATABASE_URL']
     if dburl:
         params = dburl2dict(dburl)

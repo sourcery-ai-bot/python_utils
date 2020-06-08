@@ -12,5 +12,4 @@ class DownloadImagesPipeline(ImagesPipeline):
     根据url来确定图片路径
     '''
     def image_key(self, url):
-        image_guid = urlparse(url).netloc + urlparse(url).path
-        return image_guid
+        return urlparse(url).netloc + urlparse(url).path
